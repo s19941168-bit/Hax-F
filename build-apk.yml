@@ -1,0 +1,59 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Bundle three.js locally (game works offline)
+        run: |
+          curl -fsSL https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js -o www/three.min.js
+          sed -i 's|https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js|three.min.js|g' www/index.html
+          grep -c "three.min.js" www/index.html
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Generate icon and splash
+        run: npx capacitor-assets generate --android --splashBackgroundColor '#7034B0'
+
+      - name: Portrait + fullscreen (no black bars)
+        run: |
+          sed -i 's|<activity|<activity android:screenOrientation="portrait"|' android/app/src/main/AndroidManifest.xml
+          sed -i 's|<item name="android:background">@null</item>|<item name="android:background">@null</item><item name="android:windowFullscreen">true</item><item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>|' android/app/src/main/res/values/styles.xml
+
+      - name: Sync web files
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HexFall-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
